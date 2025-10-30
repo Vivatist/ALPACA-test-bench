@@ -1,0 +1,68 @@
+# Основные зависимости
+fastapi==0.104.1
+uvicorn==0.24.0
+streamlit==1.28.1
+pydantic==2.5.0
+python-multipart==0.0.6
+
+# PDF обработка
+PyPDF2==3.0.1
+pdfplumber==0.10.0
+pymupdf==1.23.8
+pypdf==3.17.1
+pdfminer.six==20221105
+camelot-py[cv]==0.11.0
+
+# Word документы
+python-docx==1.1.0
+python-docx2txt==0.8
+docx2txt==0.8
+
+# PowerPoint
+python-pptx==0.6.23
+
+# Excel
+openpyxl==3.1.2
+pandas==2.1.3
+xlrd==2.0.1
+
+# Изображения и OCR
+Pillow==10.1.0
+pytesseract==0.3.10
+opencv-python==4.8.1.78
+easyocr==1.7.0
+
+# Обработка текста и очистка
+beautifulsoup4==4.12.2
+lxml==4.9.3
+html2text==2020.1.16
+markdownify==0.11.6
+nltk==3.8.1
+spacy==3.7.2
+
+# Структурированное извлечение и LLM cleaning
+unstructured[all-docs]==0.12.6
+
+# Утилиты
+click==8.1.7
+tqdm==4.66.1
+loguru==0.7.2
+python-dotenv==1.0.0
+pathlib2==2.3.7
+
+# Метрики и анализ
+rouge-score==0.1.2
+textstat==0.7.3
+difflib2==0.1.0
+
+# Веб-интерфейс
+jinja2==3.1.2
+plotly==5.17.0
+matplotlib==3.8.2
+
+# Разработка и тестирование
+pytest==7.4.3
+pytest-cov==4.1.0
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
