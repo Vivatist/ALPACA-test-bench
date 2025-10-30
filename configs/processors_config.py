@@ -26,6 +26,15 @@ UNSTRUCTURED_BASE_PARAMETERS: Dict[str, Any] = {
     "include_metadata": True,
     "infer_table_structure": True,
     "drop_types": ["Header", "Footer", "PageBreak"],
+    "languages": ["rus", "eng"],
+    "partition_kwargs": {
+        "languages": ["rus", "eng"],
+        "ocr_languages": "rus+eng"
+    },
+    "fallback_partition_kwargs": {
+        "languages": ["rus", "eng"],
+        "ocr_languages": "rus+eng"
+    },
 }
 
 # PDF Процессоры

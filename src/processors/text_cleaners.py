@@ -4,8 +4,8 @@
 
 import re
 import unicodedata
-from typing import Dict, Any, List, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from ..core.base import BaseCleaner
 from ..utils.logger import get_logger, log_processing_stage
@@ -266,12 +266,15 @@ class AdvancedTextCleaner(BaseCleaner):
             ]
             
             for pattern in bullet_patterns:
-                if re.match(pattern, stripped):
+                match = re.match(pattern, stripped)
+                if match:
                     # Нормализуем к стандартному Markdown формату
                     if re.match(r'^\d+[.)]\s*', stripped):
-                        # Нумерованный список
+                        # Нумерованный список — сохраняем исходный номер
+                        number_match = re.match(r'^(\d+)[.)]\s*', stripped)
                         content = re.sub(r'^\d+[.)]\s*', '', stripped)
-                        fixed_lines.append(f"1. {content}")
+                        number_token = number_match.group(1) if number_match else "1"
+                        fixed_lines.append(f"{number_token}. {content}")
                     else:
                         # Маркированный список
                         content = re.sub(pattern, '', stripped)

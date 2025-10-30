@@ -4,9 +4,10 @@ Streamlit веб-интерфейс для ALPACA Test Bench.
 
 import importlib.util
 import json
+import platform
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 import plotly.express as px
@@ -33,14 +34,20 @@ try:
     from configs.processors_config import ALL_PROCESSORS, QUALITY_METRICS
     from src.core.pipeline import DocumentPipeline
     from src.processors.docx_processors import (Docx2txtExtractor,
-                                                LibreOfficeExtractor)
-    from src.processors.markdown_converters import CustomMarkdownFormatter
+                                                DocExtractor,
+                                                PythonDocxExtractor,
+                                                Win32WordExtractor)
+    from src.processors.markdown_converters import (CustomMarkdownFormatter,
+                                                    Html2TextConverter,
+                                                    MarkdownifyConverter,
+                                                    PandocConverter)
     from src.processors.pdf_processors import (PDFPlumberExtractor,
                                                PyMuPDFExtractor,
                                                PyPDFExtractor)
     from src.processors.text_cleaners import (AdvancedTextCleaner,
                                               BasicTextCleaner, HTMLCleaner)
     from src.utils.file_manager import FileManager
+    from src.utils.llm_client import LLMConfig, build_llm_callable
     from src.utils.logger import get_logger, setup_logging
 
     # Опциональные импорты
@@ -67,6 +74,27 @@ class StreamlitApp:
         self.file_manager = FileManager()
         self.unstructured_available = UNSTRUCTURED_AVAILABLE
         self.setup_pipeline()
+        self._ensure_llm_state()
+
+    @staticmethod
+    def _default_llm_state() -> Dict[str, Any]:
+        return {
+            "enabled": False,
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "",
+            "base_url": "",
+            "temperature": 0.0,
+            "system_prompt": "",
+            "timeout": 60,
+            "max_output_tokens": 512,
+            "chunk_size": 2048,
+        }
+
+    def _ensure_llm_state(self) -> Dict[str, Any]:
+        if "llm_settings" not in st.session_state:
+            st.session_state["llm_settings"] = self._default_llm_state()
+        return st.session_state["llm_settings"]
         
     def setup_pipeline(self):
         """Настраивает pipeline с доступными процессорами."""
@@ -80,9 +108,28 @@ class StreamlitApp:
         
         # Регистрируем Word процессоры
         try:
+            self.pipeline.register_extractor(['.docx'], PythonDocxExtractor())
             self.pipeline.register_extractor(['.docx'], Docx2txtExtractor())
         except Exception as e:
-            st.warning(f"Docx2txt недоступен: {e}")
+            st.warning(f"Docx процессоры недоступны: {e}")
+
+        # Универсальный экстрактор для .doc (пробует antiword, catdoc, LibreOffice, MS Word)
+        try:
+            self.pipeline.register_extractor(['.doc'], DocExtractor())
+        except Exception as e:
+            st.warning(f"DOC экстрактор недоступен: {e}")
+
+        try:
+            win32_available = (
+                platform.system().lower().startswith("win") and
+                importlib.util.find_spec("win32com") is not None
+            )
+            if win32_available:
+                self.pipeline.register_extractor(['.doc', '.docx'], Win32WordExtractor())
+            else:
+                logger.info("pywin32/MS Word COM извлечение недоступно: модуль win32com не найден")
+        except Exception as e:
+            st.warning(f"MS Word COM экстрактор недоступен: {e}")
 
         # Unstructured интеграция
         if self.unstructured_available:
@@ -96,12 +143,22 @@ class StreamlitApp:
                     '.md',
                     '.html',
                 ]
+                language_hints = ['rus', 'eng']
                 unstructured_params = {
                     "supported_types": unstructured_types,
                     "strategy": "hi_res",
                     "chunking_strategy": "by_title",
                     "include_metadata": True,
                     "infer_table_structure": True,
+                    "languages": language_hints,
+                    "partition_kwargs": {
+                        "languages": language_hints,
+                        "ocr_languages": 'rus+eng',
+                    },
+                    "fallback_partition_kwargs": {
+                        "languages": language_hints,
+                        "ocr_languages": 'rus+eng',
+                    },
                 }
                 self.pipeline.register_extractor(
                     unstructured_types,
@@ -112,6 +169,11 @@ class StreamlitApp:
                         {
                             "use_llm_cleaning": False,
                             "repartition_if_missing": True,
+                            "languages": language_hints,
+                            "fallback_partition_kwargs": {
+                                "languages": language_hints,
+                                "ocr_languages": 'rus+eng',
+                            },
                         }
                     )
                 )
@@ -125,6 +187,142 @@ class StreamlitApp:
         
         # Регистрируем конвертеры
         self.pipeline.register_converter("custom", CustomMarkdownFormatter())
+        self.pipeline.register_converter("markdownify", MarkdownifyConverter())
+        self.pipeline.register_converter("html2text", Html2TextConverter())
+        self.pipeline.register_converter("pandoc", PandocConverter())
+
+    def _get_unstructured_cleaner(self) -> Optional[Any]:
+        for cleaner in self.pipeline.cleaners:
+            if getattr(cleaner, 'name', '') == "Unstructured LLM Cleaner":
+                return cleaner
+        return None
+
+    def _configure_unstructured_llm_cleaner(
+        self,
+        llm_required: bool,
+        llm_callable: Optional[Callable[[str], str]],
+    ) -> None:
+        from src.utils.logger import logger
+        cleaner = self._get_unstructured_cleaner()
+        if cleaner is None:
+            logger.warning("UnstructuredLLMCleaner не найден в pipeline")
+            return
+
+        llm_state = self._ensure_llm_state()
+        should_enable = bool(llm_required and llm_callable is not None)
+        cleaner.config["use_llm_cleaning"] = should_enable
+        cleaner.config["chunk_size"] = llm_state.get("chunk_size", cleaner.config.get("chunk_size", 2048))
+        cleaner.llm_callable = llm_callable
+        logger.info(f"Настроен UnstructuredLLMCleaner: use_llm_cleaning={should_enable}, llm_callable={'установлен' if llm_callable else 'отсутствует'}")
+
+    def _resolve_llm_callable(self) -> Optional[Callable[[str], str]]:
+        from src.utils.logger import logger
+        llm_state = self._ensure_llm_state()
+        if not llm_state.get("enabled"):
+            logger.info("LLM выключен в настройках")
+            return None
+
+        api_key = (llm_state.get("api_key") or "").strip()
+        model = (llm_state.get("model") or "").strip()
+        if not api_key or not model:
+            logger.error("Не указан API ключ или модель")
+            raise ValueError("Укажите API ключ и модель для LLM.")
+
+        provider = (llm_state.get("provider") or "openai").strip().lower()
+        config = LLMConfig(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            base_url=(llm_state.get("base_url") or "").strip() or None,
+            temperature=float(llm_state.get("temperature", 0.0)),
+            system_prompt=llm_state.get("system_prompt") or None,
+            timeout=int(llm_state.get("timeout", 60)),
+            max_output_tokens=(llm_state.get("max_output_tokens") or None),
+        )
+        logger.info(f"Создан LLM callable для провайдера {provider}, модель {model}")
+        callable_fn = build_llm_callable(config)
+        return callable_fn
+
+    def _render_llm_settings(self) -> None:
+        if not self.unstructured_available:
+            return
+
+        llm_state = self._ensure_llm_state()
+        st.subheader("LLM очистка (unstructured)")
+        with st.form("llm_settings_form"):
+            enabled = st.checkbox(
+                "Включить LLM очистку",
+                value=llm_state.get("enabled", False),
+            )
+            provider = st.selectbox(
+                "Провайдер",
+                ["OpenAI"],
+                index=0,
+            )
+            model = st.text_input(
+                "Модель",
+                value=llm_state.get("model", "gpt-4o-mini"),
+                help="Название модели, доступной в выбранном провайдере",
+            )
+            api_key = st.text_input(
+                "API ключ",
+                value=llm_state.get("api_key", ""),
+                type="password",
+                help="Ключ не сохраняется на диск и живет только в сессии Streamlit",
+            )
+            base_url = st.text_input(
+                "Базовый URL",
+                value=llm_state.get("base_url", ""),
+                placeholder="https://api.openai.com/v1/chat/completions",
+            )
+            temperature = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(llm_state.get("temperature", 0.0)),
+                step=0.05,
+            )
+            max_tokens = st.number_input(
+                "Max output tokens (0 = по умолчанию)",
+                min_value=0,
+                max_value=8192,
+                value=int(llm_state.get("max_output_tokens", 512) or 0),
+            )
+            chunk_size = st.number_input(
+                "Размер чанка при очистке",
+                min_value=256,
+                max_value=4096,
+                step=256,
+                value=int(llm_state.get("chunk_size", 2048)),
+            )
+            timeout = st.number_input(
+                "Таймаут запроса (сек)",
+                min_value=10,
+                max_value=180,
+                value=int(llm_state.get("timeout", 60)),
+            )
+            system_prompt = st.text_area(
+                "Системный промпт",
+                value=llm_state.get("system_prompt", ""),
+                height=150,
+            )
+
+            submitted = st.form_submit_button("Сохранить LLM настройки")
+
+        if submitted:
+            st.session_state["llm_settings"] = {
+                "enabled": enabled,
+                "provider": provider.lower(),
+                "model": model.strip(),
+                "api_key": api_key.strip(),
+                "base_url": base_url.strip(),
+                "temperature": float(temperature),
+                "system_prompt": system_prompt.strip(),
+                "timeout": int(timeout),
+                "max_output_tokens": int(max_tokens) if max_tokens else None,
+                "chunk_size": int(chunk_size),
+            }
+            st.success("Настройки LLM сохранены")
 
     def run(self):
         """Запуск приложения."""
@@ -214,7 +412,7 @@ class StreamlitApp:
                 # Настройки конвертации
                 converter_options = st.multiselect(
                     "Конвертеры в Markdown",
-                    ["custom", "markdownify", "html2text"],
+                    ["custom", "markdownify", "html2text", "pandoc"],
                     default=["custom"]
                 )
             
@@ -267,6 +465,23 @@ class StreamlitApp:
         status_text = st.empty()
         
         results = {}
+
+        llm_required = (
+            self.unstructured_available and "Unstructured LLM Cleaner" in cleaners
+        )
+        llm_callable: Optional[Callable[[str], str]] = None
+
+        if llm_required:
+            try:
+                llm_callable = self._resolve_llm_callable()
+            except Exception as exc:
+                st.warning(f"LLM очистка не активирована: {exc}")
+                llm_callable = None
+
+        self._configure_unstructured_llm_cleaner(llm_required, llm_callable)
+
+        if llm_required and llm_callable is None:
+            st.info("Unstructured LLM Cleaner будет работать без LLM — выполняется только базовая очистка.")
         
         for i, processor in enumerate(processors):
             status_text.text(f"Обработка с помощью {processor}...")
@@ -278,7 +493,8 @@ class StreamlitApp:
                     file_path=file_path,
                     extractor_name=processor,
                     cleaner_names=cleaners,
-                    converter_name=converters[0] if converters else None
+                    converter_name=converters[0] if converters else None,
+                    llm_callable=llm_callable,
                 )
                 
                 results[processor] = result
@@ -544,6 +760,8 @@ class StreamlitApp:
             if enabled:
                 weight = st.slider(f"Вес {metric_name}", 0.0, 1.0, config["weight"])
         
+        self._render_llm_settings()
+
         if st.button("Применить настройки"):
             st.success("Настройки применены!")
     

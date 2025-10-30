@@ -1,13 +1,12 @@
-"""
-Менеджер файлов для сохранения и управления результатами обработки.
-"""
+"""Менеджер файлов для сохранения и управления результатами обработки."""
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..core.base import ProcessingResult, QualityScore
 from .logger import get_logger
@@ -21,137 +20,245 @@ class FileManager:
     def __init__(self, base_output_dir: Path = None):
         self.base_output_dir = Path(base_output_dir or "outputs")
         self.base_output_dir.mkdir(exist_ok=True)
-        
+
     def get_output_dir(self, input_file: Path) -> Path:
-        """
-        Создает структуру директорий для результатов обработки файла.
-        
-        Args:
-            input_file: Путь к исходному файлу
-            
-        Returns:
-            Path: Путь к директории для результатов
-        """
-        # Создаем уникальную папку на основе имени файла и времени
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_filename = self._make_safe_filename(input_file.stem)
-        
-        output_dir = self.base_output_dir / f"{safe_filename}_{timestamp}"
-        output_dir.mkdir(exist_ok=True)
-        
-        # Создаем подпапки
-        (output_dir / "extraction").mkdir(exist_ok=True)
-        (output_dir / "cleaning").mkdir(exist_ok=True)
-        (output_dir / "markdown").mkdir(exist_ok=True)
-        (output_dir / "reports").mkdir(exist_ok=True)
-        
-        return output_dir
+        """Создает директорию эксперимента с автоинкрементом."""
+        experiment_dir = self._create_next_experiment_dir()
+        return experiment_dir
     
     def save_extraction_results(
-        self, 
-        results: Dict[str, ProcessingResult], 
-        output_dir: Path
+        self,
+        results: Dict[str, ProcessingResult],
+        output_dir: Path,
+        original_path: Optional[Path] = None,
     ):
         """Сохраняет результаты извлечения текста."""
-        extraction_dir = output_dir
-        extraction_dir.mkdir(parents=True, exist_ok=True)
-        
+        experiment_dir = output_dir
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+
         for processor_name, result in results.items():
-            if result.status.value == "completed":
-                # Сохраняем текст
-                text_file = extraction_dir / f"{processor_name}.txt"
-                text_file.write_text(result.content, encoding='utf-8')
-                
-                # Сохраняем метаданные
-                metadata_file = extraction_dir / f"{processor_name}_metadata.json"
-                metadata = {
-                    "processor": processor_name,
-                    "status": result.status.value,
-                    "execution_time": result.execution_time,
-                    "metadata": result.metadata,
-                    "error_message": result.error_message
-                }
-                metadata_file.write_text(
-                    json.dumps(metadata, indent=2, ensure_ascii=False), 
-                    encoding='utf-8'
-                )
-                
-        logger.info(f"Saved extraction results to {extraction_dir}")
+            if result.status.value != "completed":
+                continue
+
+            parser_dir = self._ensure_parser_dir(experiment_dir, processor_name)
+            filename = self._format_filename(
+                stage_number=1,
+                stage_name="extraction",
+                libraries=[processor_name],
+                extension="txt",
+            )
+            file_path = parser_dir / filename
+            header = self._build_processing_header(
+                stage_chain=[result],
+                original_file=original_path,
+            )
+            file_path.write_text(header + result.content, encoding="utf-8")
+
+        logger.info("Saved extraction results to %s", experiment_dir)
     
     def save_cleaning_results(
-        self, 
-        results: Dict[str, Dict[str, ProcessingResult]], 
-        output_dir: Path
+        self,
+        results: Dict[str, Dict[str, ProcessingResult]],
+        output_dir: Path,
+        *,
+        extraction_results: Optional[Dict[str, ProcessingResult]] = None,
+        original_path: Optional[Path] = None,
     ):
         """Сохраняет результаты очистки текста."""
-        cleaning_dir = output_dir
-        cleaning_dir.mkdir(parents=True, exist_ok=True)
-        
+        experiment_dir = output_dir
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+
         for extractor_name, cleaner_results in results.items():
-            extractor_dir = cleaning_dir / extractor_name
-            extractor_dir.mkdir(exist_ok=True)
-            
+            parser_dir = self._ensure_parser_dir(experiment_dir, extractor_name)
+
             for cleaner_name, result in cleaner_results.items():
-                if result.status.value == "completed":
-                    # Сохраняем очищенный текст
-                    text_file = extractor_dir / f"{cleaner_name}.txt"
-                    text_file.write_text(result.content, encoding='utf-8')
-                    
-                    # Сохраняем метаданные
-                    metadata_file = extractor_dir / f"{cleaner_name}_metadata.json"
-                    metadata = {
-                        "extractor": extractor_name,
-                        "cleaner": cleaner_name,
-                        "status": result.status.value,
-                        "execution_time": result.execution_time,
-                        "metadata": result.metadata,
-                        "error_message": result.error_message
-                    }
-                    metadata_file.write_text(
-                        json.dumps(metadata, indent=2, ensure_ascii=False), 
-                        encoding='utf-8'
-                    )
-        
-        logger.info(f"Saved cleaning results to {cleaning_dir}")
+                if result.status.value != "completed":
+                    continue
+
+                filename = self._format_filename(
+                    stage_number=2,
+                    stage_name="cleaning",
+                    libraries=[extractor_name, cleaner_name],
+                    extension="txt",
+                )
+                file_path = parser_dir / filename
+
+                stage_chain = []
+                if extraction_results:
+                    base_result = extraction_results.get(extractor_name)
+                    if base_result and base_result.status.value == "completed":
+                        stage_chain.append(base_result)
+                stage_chain.append(result)
+
+                header = self._build_processing_header(
+                    stage_chain=stage_chain,
+                    original_file=original_path,
+                )
+
+                file_path.write_text(header + result.content, encoding="utf-8")
+
+        logger.info("Saved cleaning results to %s", experiment_dir)
     
     def save_conversion_results(
-        self, 
-        results: Dict[str, Dict[str, Dict[str, ProcessingResult]]], 
-        output_dir: Path
+        self,
+        results: Dict[str, Dict[str, Dict[str, ProcessingResult]]],
+        output_dir: Path,
+        *,
+        extraction_results: Optional[Dict[str, ProcessingResult]] = None,
+        cleaning_results: Optional[Dict[str, Dict[str, ProcessingResult]]] = None,
+        original_path: Optional[Path] = None,
     ):
         """Сохраняет результаты конвертации в Markdown."""
-        markdown_dir = output_dir
-        markdown_dir.mkdir(parents=True, exist_ok=True)
-        
+        experiment_dir = output_dir
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+
         for extractor_name, cleaner_results in results.items():
+            parser_dir = self._ensure_parser_dir(experiment_dir, extractor_name)
+
             for cleaner_name, converter_results in cleaner_results.items():
-                pipeline_name = f"{extractor_name}_{cleaner_name}"
-                pipeline_dir = markdown_dir / pipeline_name
-                pipeline_dir.mkdir(exist_ok=True)
-                
                 for converter_name, result in converter_results.items():
-                    if result.status.value == "completed":
-                        # Сохраняем Markdown
-                        md_file = pipeline_dir / f"{converter_name}.md"
-                        md_file.write_text(result.content, encoding='utf-8')
-                        
-                        # Сохраняем метаданные
-                        metadata_file = pipeline_dir / f"{converter_name}_metadata.json"
-                        metadata = {
-                            "extractor": extractor_name,
-                            "cleaner": cleaner_name,
-                            "converter": converter_name,
-                            "status": result.status.value,
-                            "execution_time": result.execution_time,
-                            "metadata": result.metadata,
-                            "error_message": result.error_message
-                        }
-                        metadata_file.write_text(
-                            json.dumps(metadata, indent=2, ensure_ascii=False), 
-                            encoding='utf-8'
-                        )
-        
-        logger.info(f"Saved markdown results to {markdown_dir}")
+                    if result.status.value != "completed":
+                        continue
+
+                    filename = self._format_filename(
+                        stage_number=3,
+                        stage_name="conversion",
+                        libraries=[extractor_name, cleaner_name, converter_name],
+                        extension="md",
+                    )
+                    file_path = parser_dir / filename
+
+                    stage_chain = []
+
+                    if extraction_results:
+                        base_result = extraction_results.get(extractor_name)
+                        if base_result and base_result.status.value == "completed":
+                            stage_chain.append(base_result)
+
+                    if cleaning_results:
+                        cleaner_dict = cleaning_results.get(extractor_name, {})
+                        cleaner_result = cleaner_dict.get(cleaner_name)
+                        if cleaner_result and cleaner_result.status.value == "completed":
+                            stage_chain.append(cleaner_result)
+
+                    stage_chain.append(result)
+
+                    header = self._build_processing_header(
+                        stage_chain=stage_chain,
+                        original_file=original_path,
+                    )
+
+                    file_path.write_text(header + result.content, encoding="utf-8")
+
+        logger.info("Saved markdown results to %s", experiment_dir)
+
+    def _create_next_experiment_dir(self) -> Path:
+        existing_numbers = [
+            int(item.name)
+            for item in self.base_output_dir.iterdir()
+            if item.is_dir() and item.name.isdigit()
+        ]
+        next_number = max(existing_numbers, default=0) + 1
+        experiment_dir = self.base_output_dir / str(next_number)
+        experiment_dir.mkdir(exist_ok=True)
+        return experiment_dir
+
+    def _ensure_parser_dir(self, experiment_dir: Path, parser_name: str) -> Path:
+        safe_name = self._sanitize_component(parser_name)
+        parser_dir = experiment_dir / safe_name
+        parser_dir.mkdir(exist_ok=True)
+        return parser_dir
+
+    def _format_filename(
+        self,
+        *,
+        stage_number: int,
+        stage_name: str,
+        libraries: List[str],
+        extension: str,
+    ) -> str:
+        stage_component = self._sanitize_component(stage_name)
+        library_components = [self._sanitize_component(lib) for lib in libraries if lib]
+        libs_part = "__".join(filter(None, library_components))
+
+        if libs_part:
+            base_name = f"{stage_number}_{stage_component}_{libs_part}"
+        else:
+            base_name = f"{stage_number}_{stage_component}"
+
+        return f"{base_name}.{extension.lstrip('.')}"
+
+    def _build_processing_header(
+        self,
+        *,
+        stage_chain: List[ProcessingResult],
+        original_file: Optional[Path] = None,
+    ) -> str:
+        lines: List[str] = ["---", "метаданные"]
+        lines.append(f"Сгенерировано: {datetime.now().isoformat()}")
+
+        if original_file is not None:
+            lines.append(f"Исходный файл: {original_file}")
+
+        if not stage_chain:
+            lines.append("Этапы обработки: отсутствуют")
+            lines.append("---")
+            return "\n".join(lines) + "\n\n"
+
+        lines.append("Этапы обработки:")
+
+        for index, stage_result in enumerate(stage_chain, start=1):
+            stage_label = stage_result.stage.value.capitalize()
+            lines.append(
+                f"  - [{index}] {stage_label} → {stage_result.processor_name}"
+            )
+            lines.append(
+                f"      Время выполнения: {stage_result.execution_time:.3f} сек"
+            )
+
+            config = (stage_result.metadata or {}).get("processor_config")
+            if config:
+                config_repr = self._stringify_value(config, pretty_json=True)
+                lines.append("      Настройки:")
+                for config_line in config_repr.splitlines():
+                    lines.append(f"        {config_line}")
+            else:
+                lines.append("      Настройки: {}")
+
+        lines.append("---")
+        return "\n".join(lines) + "\n\n"
+
+    def _stringify_value(self, value: Any, pretty_json: bool = False) -> str:
+        if value is None:
+            return "null"
+
+        if isinstance(value, (int, float)):
+            return f"{value}"
+
+        if isinstance(value, bool):
+            return "true" if value else "false"
+
+        if isinstance(value, str):
+            return value
+
+        try:
+            if pretty_json:
+                return json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def _sanitize_component(component: str) -> str:
+        if not component:
+            return "unknown"
+
+        component = component.strip()
+        component = component.replace("/", "-")
+        component = component.replace("\\", "-")
+        component = re.sub(r"[^0-9A-Za-zА-Яа-я_\-\s]", "", component)
+        component = re.sub(r"\s+", "_", component)
+        return component or "unknown"
     
     def save_quality_report(
         self, 

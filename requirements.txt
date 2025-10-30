@@ -15,6 +15,7 @@ camelot-py[cv]>=0.11.0
 
 # Word документы
 docx2txt>=0.8
+python-docx>=0.8.11
 
 # PowerPoint
 python-pptx>=0.6.23
@@ -40,12 +41,14 @@ spacy>=3.7.0
 
 # Структурированное извлечение и LLM cleaning
 unstructured[all-docs]>=0.12.6
+requests>=2.31.0
 
 # Утилиты
 click>=8.1.0
 tqdm>=4.66.0
 loguru>=0.7.0
 python-dotenv>=1.0.0
+pywin32>=306; platform_system == "Windows"
 
 # Метрики и анализ
 rouge-score>=0.1.2

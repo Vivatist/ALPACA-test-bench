@@ -2,15 +2,68 @@
 Процессоры для извлечения текста из Word документов (.doc, .docx).
 """
 
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-import tempfile
+import platform
+import shutil
 import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from ..core.base import BaseExtractor
 from ..utils.logger import get_logger, log_processing_stage
 
 logger = get_logger(__name__)
+
+
+def _format_extracted_text(text: str) -> str:
+    """Нормализует текст, применяя простые эвристики для заголовков."""
+    if not text:
+        return ""
+
+    lines = text.split('\n')
+    cleaned_lines: List[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if cleaned_lines and cleaned_lines[-1]:
+                cleaned_lines.append("")
+            continue
+
+        if len(stripped) < 100 and stripped.isupper():
+            cleaned_lines.append(f"# {stripped}")
+        elif len(stripped) < 80 and not stripped.endswith('.'):
+            cleaned_lines.append(f"## {stripped}")
+        else:
+            cleaned_lines.append(stripped)
+
+    return '\n'.join(cleaned_lines)
+
+
+def _extract_docx_with_python_docx(docx_path: Path) -> str:
+    from docx import Document  # type: ignore
+
+    doc = Document(str(docx_path))
+    parts: List[str] = []
+
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            parts.append(text)
+
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            if any(cells):
+                parts.append(" | ".join(cells))
+
+    return "\n".join(parts)
+
+
+def _extract_docx_with_docx2txt(docx_path: Path) -> str:
+    import docx2txt  # type: ignore
+
+    return docx2txt.process(str(docx_path))
 
 
 class PythonDocxExtractor(BaseExtractor):
@@ -178,32 +231,12 @@ class Docx2txtExtractor(BaseExtractor):
     def extract_text(self, file_path: Path, **kwargs) -> str:
         """Извлекает текст простым способом."""
         try:
-            import docx2txt
-            
-            text = docx2txt.process(str(file_path))
-            
+            text = _extract_docx_with_docx2txt(file_path)
+
             if not text or not text.strip():
                 return "Текст не извлечен или документ пуст"
-            
-            # Базовая очистка и форматирование
-            lines = text.split('\n')
-            cleaned_lines = []
-            
-            for line in lines:
-                line = line.strip()
-                if line:
-                    # Простая эвристика для заголовков
-                    if len(line) < 100 and line.isupper():
-                        cleaned_lines.append(f"# {line}")
-                    elif len(line) < 80 and not line.endswith('.'):
-                        cleaned_lines.append(f"## {line}")
-                    else:
-                        cleaned_lines.append(line)
-                elif cleaned_lines and cleaned_lines[-1]:
-                    # Добавляем пустую строку только если предыдущая не пустая
-                    cleaned_lines.append("")
-            
-            return "\n".join(cleaned_lines)
+
+            return _format_extracted_text(text)
             
         except ImportError:
             raise ImportError("docx2txt is not installed. Run: pip install docx2txt")
@@ -212,75 +245,191 @@ class Docx2txtExtractor(BaseExtractor):
             raise
 
 
-class LibreOfficeExtractor(BaseExtractor):
+class DocExtractor(BaseExtractor):
     """
-    Процессор для .doc файлов через LibreOffice/OpenOffice.
-    Требует установленный LibreOffice.
+    Универсальный процессор для .doc файлов.
+    Пробует несколько методов: antiword, catdoc, LibreOffice, MS Word COM.
     """
     
     def __init__(self, config: Dict[str, Any] = None):
-        super().__init__("LibreOffice", config)
+        super().__init__("DOC Extractor", config)
         
     def supports_file_type(self, file_type: str) -> bool:
-        return file_type.lower() in ['.doc', '.docx']
+        return file_type.lower() in ['.doc']
     
-    @log_processing_stage("LibreOffice Extraction")
+    @log_processing_stage("DOC Extraction")
     def extract_text(self, file_path: Path, **kwargs) -> str:
-        """Конвертирует документ в текст через LibreOffice."""
+        """Извлекает текст из .doc файла используя доступные методы."""
+        
+        # Метод 1: Попытка через antiword (быстрый и надёжный)
         try:
-            # Проверяем наличие LibreOffice
-            libreoffice_path = self._find_libreoffice()
-            if not libreoffice_path:
-                raise EnvironmentError(
-                    "LibreOffice not found. Please install LibreOffice."
-                )
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
-                
-                # Конвертируем в текстовый файл
-                cmd = [
-                    libreoffice_path,
-                    '--headless',
-                    '--convert-to', 'txt',
-                    '--outdir', str(temp_path),
-                    str(file_path)
-                ]
-                
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=60
-                )
-                
-                if result.returncode != 0:
-                    raise RuntimeError(f"LibreOffice conversion failed: {result.stderr}")
-                
-                # Читаем результат
-                output_file = temp_path / f"{file_path.stem}.txt"
-                if not output_file.exists():
-                    raise RuntimeError("Converted file not found")
-                
-                text = output_file.read_text(encoding='utf-8')
-                
-                # Базовая обработка
-                if not text.strip():
-                    return "Документ пуст или не удалось извлечь текст"
-                
-                return self._format_libreoffice_output(text)
-                
-        except subprocess.TimeoutExpired:
-            raise TimeoutError("LibreOffice conversion timeout")
+            text = self._extract_with_antiword(file_path)
+            if text.strip():
+                logger.info("Successfully extracted with antiword")
+                return _format_extracted_text(text)
         except Exception as e:
-            logger.error(f"LibreOffice extraction failed: {e}")
-            raise
+            logger.debug(f"antiword extraction failed: {e}")
+        
+        # Метод 2: Попытка через catdoc
+        try:
+            text = self._extract_with_catdoc(file_path)
+            if text.strip():
+                logger.info("Successfully extracted with catdoc")
+                return _format_extracted_text(text)
+        except Exception as e:
+            logger.debug(f"catdoc extraction failed: {e}")
+        
+        # Метод 3: LibreOffice
+        try:
+            text = self._extract_with_libreoffice(file_path)
+            if text.strip():
+                logger.info("Successfully extracted with LibreOffice")
+                return _format_extracted_text(text)
+        except Exception as e:
+            logger.debug(f"LibreOffice extraction failed: {e}")
+        
+        # Метод 4: MS Word COM (только Windows)
+        if platform.system().lower() == "windows":
+            try:
+                text = self._extract_with_word_com(file_path)
+                if text.strip():
+                    logger.info("Successfully extracted with MS Word COM")
+                    return _format_extracted_text(text)
+            except Exception as e:
+                logger.debug(f"MS Word COM extraction failed: {e}")
+        
+        raise RuntimeError(
+            "Failed to extract text from .doc file. "
+            "Install antiword, catdoc, LibreOffice, or MS Word for .doc support."
+        )
+    
+    def _extract_with_antiword(self, file_path: Path) -> str:
+        """Извлечение через antiword."""
+        antiword_path = shutil.which('antiword')
+        if not antiword_path:
+            raise EnvironmentError("antiword not found")
+        
+        result = subprocess.run(
+            [antiword_path, str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"antiword failed: {result.stderr}")
+        
+        return result.stdout
+    
+    def _extract_with_catdoc(self, file_path: Path) -> str:
+        """Извлечение через catdoc."""
+        catdoc_path = shutil.which('catdoc')
+        if not catdoc_path:
+            raise EnvironmentError("catdoc not found")
+        
+        result = subprocess.run(
+            [catdoc_path, '-a', str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"catdoc failed: {result.stderr}")
+        
+        return result.stdout
+    
+    def _extract_with_libreoffice(self, file_path: Path) -> str:
+        """Извлечение через LibreOffice."""
+        libreoffice_path = self._find_libreoffice()
+        if not libreoffice_path:
+            raise EnvironmentError("LibreOffice not found")
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Конвертируем в docx
+            cmd = [
+                libreoffice_path,
+                '--headless',
+                '--convert-to', 'docx:MS Word 2007 XML',
+                '--outdir', str(temp_path),
+                str(file_path)
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"LibreOffice conversion failed: {result.stderr}")
+            
+            # Ищем конвертированный файл
+            converted_docx = temp_path / f"{file_path.stem}.docx"
+            if not converted_docx.exists():
+                candidates = list(temp_path.glob(f"{file_path.stem}*.docx"))
+                if not candidates:
+                    raise RuntimeError("Converted DOCX file not found")
+                converted_docx = candidates[0]
+            
+            # Извлекаем текст из docx
+            try:
+                return _extract_docx_with_python_docx(converted_docx)
+            except:
+                return _extract_docx_with_docx2txt(converted_docx)
+    
+    def _extract_with_word_com(self, file_path: Path) -> str:
+        """Извлечение через MS Word COM."""
+        try:
+            import win32com.client
+            from pywintypes import com_error
+        except ImportError:
+            raise ImportError("pywin32 not installed")
+        
+        word_app = None
+        doc = None
+        
+        try:
+            word_app = win32com.client.Dispatch("Word.Application")
+            word_app.Visible = False
+            word_app.DisplayAlerts = 0
+            
+            doc = word_app.Documents.Open(
+                str(file_path.absolute()),
+                ReadOnly=True,
+                ConfirmConversions=False,
+                AddToRecentFiles=False
+            )
+            
+            text = doc.Content.Text
+            doc.Close(False)
+            doc = None
+            
+            return text
+            
+        except com_error as e:
+            raise RuntimeError(f"Word COM failed: {e}")
+        finally:
+            if doc is not None:
+                try:
+                    doc.Close(False)
+                except:
+                    pass
+            if word_app is not None:
+                try:
+                    word_app.Quit()
+                except:
+                    pass
     
     def _find_libreoffice(self) -> Optional[str]:
         """Ищет исполняемый файл LibreOffice."""
-        import shutil
-        
-        # Возможные пути к LibreOffice
         possible_paths = [
             'libreoffice',
             'soffice',
@@ -293,30 +442,77 @@ class LibreOfficeExtractor(BaseExtractor):
         for path in possible_paths:
             if shutil.which(path):
                 return path
+            # Проверяем как прямой путь (для Windows)
+            if Path(path).exists():
+                return path
         
         return None
-    
-    def _format_libreoffice_output(self, text: str) -> str:
-        """Форматирует вывод LibreOffice."""
-        lines = text.split('\n')
-        formatted_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                if formatted_lines and formatted_lines[-1]:
-                    formatted_lines.append("")
-                continue
-            
-            # Простая эвристика для заголовков
-            if len(line) < 100:
-                # Если строка короткая и не заканчивается точкой
-                if not line.endswith('.') and not line.endswith(','):
-                    # Проверяем, начинается ли со цифры (номер раздела)
-                    if line[0].isdigit() or line.isupper():
-                        formatted_lines.append(f"# {line}")
-                        continue
-            
-            formatted_lines.append(line)
-        
-        return "\n".join(formatted_lines)
+
+
+class Win32WordExtractor(BaseExtractor):
+    """Процессор, использующий Microsoft Word через COM (только Windows)."""
+
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__("MS Word COM", config)
+
+    def supports_file_type(self, file_type: str) -> bool:
+        return file_type.lower() in [".doc", ".docx", ".rtf"]
+
+    @log_processing_stage("MS Word COM Extraction")
+    def extract_text(self, file_path: Path, **kwargs) -> str:
+        if platform.system().lower() != "windows":
+            raise EnvironmentError("MS Word COM extractor available only on Windows")
+
+        try:
+            import win32com.client  # type: ignore
+            from pywintypes import com_error  # type: ignore
+        except ImportError as exc:  # pragma: no cover - depends on environment
+            raise ImportError(
+                "pywin32 is required for MS Word extraction. Install via 'pip install pywin32'."
+            ) from exc
+
+        word_app = None
+        doc = None
+
+        try:
+            word_app = win32com.client.Dispatch("Word.Application")
+            word_app.Visible = False
+            word_app.DisplayAlerts = 0
+
+            doc = word_app.Documents.Open(
+                str(file_path),
+                ReadOnly=True,
+                ConfirmConversions=False,
+                AddToRecentFiles=False,
+            )
+
+            file_format = self.config.get("file_format", 7)  # 7 = wdFormatUnicodeText
+            output_encoding = self.config.get("output_encoding", "utf-16")
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / f"{file_path.stem}_msword.txt"
+                doc.SaveAs(str(temp_path), FileFormat=file_format)
+                doc.Close(False)
+                doc = None
+
+                text = temp_path.read_text(encoding=output_encoding, errors="ignore")
+
+            if not text.strip():
+                return "Документ пуст или не удалось извлечь текст"
+
+            # Нормализуем переносы строк
+            return text.replace("\r\n", "\n").strip()
+
+        except com_error as exc:
+            raise RuntimeError(f"Microsoft Word automation failed: {exc}") from exc
+        finally:
+            if doc is not None:
+                try:
+                    doc.Close(False)
+                except Exception:  # pragma: no cover - best effort cleanup
+                    pass
+            if word_app is not None:
+                try:
+                    word_app.Quit()
+                except Exception:  # pragma: no cover
+                    pass

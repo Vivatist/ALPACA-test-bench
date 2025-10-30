@@ -443,16 +443,19 @@ class CustomMarkdownFormatter(BaseConverter):
             
             # Различные виды маркеров
             list_patterns = [
-                (r'^[•·▪▫◦‣⁃]\s*(.+)', r'- \1'),  # Символы -> дефис
-                (r'^[*+]\s*(.+)', r'- \1'),       # Звездочка/плюс -> дефис
-                (r'^(\d+)[.)]\s*(.+)', r'1. \2'), # Числа -> нумерованный список
+                (r'^[•·▪▫◦‣⁃]\s*(.+)', lambda m: f"- {m.group(1)}"),
+                (r'^[*+]\s*(.+)', lambda m: f"- {m.group(1)}"),
+                (r'^(\d+)[.)]\s*(.+)', lambda m: f"{m.group(1)}. {m.group(2)}"),
             ]
             
             formatted = False
             for pattern, replacement in list_patterns:
                 match = re.match(pattern, stripped)
                 if match:
-                    formatted_lines.append(re.sub(pattern, replacement, stripped))
+                    if callable(replacement):
+                        formatted_lines.append(replacement(match))
+                    else:
+                        formatted_lines.append(re.sub(pattern, replacement, stripped))
                     formatted = True
                     break
             

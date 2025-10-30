@@ -24,7 +24,7 @@ ALPACA Test Bench/
 ### Поддерживаемые форматы
 
 - **PDF файлы** (.pdf) - PyPDF, PDFPlumber, PyMuPDF, PDFMiner, Camelot
-- **Word документы** (.doc, .docx) - Unstructured Partition, docx2txt  
+- **Word документы** (.doc, .docx) - Unstructured Partition (rus+eng OCR), docx2txt  
 - **PowerPoint** (.ppt, .pptx) - python-pptx
 - **Excel таблицы** (.xls, .xlsx) - openpyxl, pandas, xlrd
 - **Изображения** (.jpg, .jpeg, .png, .tiff) - Tesseract OCR, EasyOCR

@@ -2,12 +2,13 @@
 Базовые классы и интерфейсы для системы обработки документов.
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass
-from pathlib import Path
+import copy
 import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ProcessingStage(Enum):
@@ -140,13 +141,17 @@ class BaseProcessor(ABC):
         error_message: str = None
     ) -> ProcessingResult:
         """Создает объект результата обработки."""
+        metadata_copy = copy.deepcopy(metadata) if metadata else {}
+        if "processor_config" not in metadata_copy:
+            metadata_copy["processor_config"] = copy.deepcopy(self.config)
+
         return ProcessingResult(
             content=content,
             processor_name=self.name,
             stage=stage,
             status=status,
             execution_time=execution_time,
-            metadata=metadata or {},
+            metadata=metadata_copy,
             error_message=error_message
         )
 

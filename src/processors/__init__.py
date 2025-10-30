@@ -2,7 +2,8 @@
 Инициализация модуля процессоров документов.
 """
 
-from .docx_processors import Docx2txtExtractor, LibreOfficeExtractor
+from .docx_processors import (Docx2txtExtractor, DocExtractor,
+                              Win32WordExtractor)
 from .markdown_converters import (CustomMarkdownFormatter, Html2TextConverter,
                                   MarkdownifyConverter, PandocConverter)
 # Экспортируем основные классы процессоров
@@ -24,7 +25,8 @@ __all__ = [
     
     # Word процессоры
     'Docx2txtExtractor',
-    'LibreOfficeExtractor',
+    'DocExtractor',
+    'Win32WordExtractor',
     
     # Очистители текста
     'BasicTextCleaner',

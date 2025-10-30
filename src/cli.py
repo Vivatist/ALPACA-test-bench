@@ -46,12 +46,22 @@ def _register_components(pipeline: DocumentPipeline, file_ext: str) -> List[str]
             unstructured_types = [
                 '.pdf', '.docx', '.doc', '.pptx', '.ppt', '.md', '.html'
             ]
+            language_hints = ['rus', 'eng']
             unstructured_params = {
                 "supported_types": unstructured_types,
                 "strategy": "hi_res",
                 "chunking_strategy": "by_title",
                 "include_metadata": True,
                 "infer_table_structure": True,
+                "languages": language_hints,
+                "partition_kwargs": {
+                    "languages": language_hints,
+                    "ocr_languages": "+".join(language_hints),
+                },
+                "fallback_partition_kwargs": {
+                    "languages": language_hints,
+                    "ocr_languages": "+".join(language_hints),
+                },
             }
             pipeline.register_extractor(
                 unstructured_types,
@@ -73,6 +83,11 @@ def _register_components(pipeline: DocumentPipeline, file_ext: str) -> List[str]
                 UnstructuredLLMCleaner({
                     "use_llm_cleaning": False,
                     "repartition_if_missing": True,
+                    "languages": ['rus', 'eng'],
+                    "fallback_partition_kwargs": {
+                        "languages": ['rus', 'eng'],
+                        "ocr_languages": 'rus+eng',
+                    },
                 })
             )
 

@@ -2,19 +2,17 @@
 Основной pipeline для обработки документов.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from pathlib import Path
 import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from .base import (
-    BaseProcessor, BaseExtractor, BaseCleaner, BaseConverter,
-    ProcessingResult, ProcessingStage, ProcessingStatus,
-    DocumentMetadata, QualityScore
-)
-from ..utils.metrics import MetricsCalculator
 from ..utils.logger import get_logger
+from ..utils.metrics import MetricsCalculator
+from .base import (BaseCleaner, BaseConverter, BaseExtractor, BaseProcessor,
+                   DocumentMetadata, ProcessingResult, ProcessingStage,
+                   ProcessingStatus, QualityScore)
 
 logger = get_logger(__name__)
 
@@ -292,20 +290,25 @@ class DocumentPipeline:
             from ..utils.file_manager import FileManager
             
             file_manager = FileManager()
-            output_dir = file_manager.get_output_dir(file_path)
-            
-            # Сохраняем результаты каждого этапа
+            experiment_dir = file_manager.get_output_dir(file_path)
+
             file_manager.save_extraction_results(
-                results["extraction_results"], output_dir / "extraction"
+                results["extraction_results"],
+                experiment_dir,
+                original_path=file_path,
             )
             file_manager.save_cleaning_results(
-                results["cleaning_results"], output_dir / "cleaning"
+                results["cleaning_results"],
+                experiment_dir,
+                extraction_results=results["extraction_results"],
+                original_path=file_path,
             )
             file_manager.save_conversion_results(
-                results["conversion_results"], output_dir / "markdown"
-            )
-            file_manager.save_quality_report(
-                results["quality_scores"], output_dir / "quality_report.json"
+                results["conversion_results"],
+                experiment_dir,
+                extraction_results=results["extraction_results"],
+                cleaning_results=results["cleaning_results"],
+                original_path=file_path,
             )
             
         except Exception as e:
