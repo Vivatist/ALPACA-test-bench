@@ -2,38 +2,17 @@
 Инициализация модуля процессоров документов.
 """
 
+from .docx_processors import Docx2txtExtractor, LibreOfficeExtractor
+from .markdown_converters import (CustomMarkdownFormatter, Html2TextConverter,
+                                  MarkdownifyConverter, PandocConverter)
 # Экспортируем основные классы процессоров
-from .pdf_processors import (
-    PyPDFExtractor,
-    PDFPlumberExtractor, 
-    PyMuPDFExtractor,
-    PDFMinerExtractor,
-    CamelotExtractor
-)
-
-from .docx_processors import (
-    Docx2txtExtractor,
-    LibreOfficeExtractor
-)
-
-from .text_cleaners import (
-    BasicTextCleaner,
-    AdvancedTextCleaner,
-    HTMLCleaner,
-    OCRArtifactsCleaner
-)
-
-from .unstructured_processors import (
-    UnstructuredPartitionExtractor,
-    UnstructuredLLMCleaner
-)
-
-from .markdown_converters import (
-    MarkdownifyConverter,
-    Html2TextConverter,
-    PandocConverter,
-    CustomMarkdownFormatter
-)
+from .pdf_processors import (CamelotExtractor, PDFMinerExtractor,
+                             PDFPlumberExtractor, PyMuPDFExtractor,
+                             PyPDFExtractor)
+from .text_cleaners import (AdvancedTextCleaner, BasicTextCleaner, HTMLCleaner,
+                            OCRArtifactsCleaner)
+from .unstructured_processors import (UnstructuredLLMCleaner,
+                                      UnstructuredPartitionExtractor)
 
 __all__ = [
     # PDF процессоры

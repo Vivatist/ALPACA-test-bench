@@ -2,20 +2,21 @@
 CLI интерфейс для ALPACA Test Bench.
 """
 
-import click
+import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import List, Optional
-import json
-import importlib.util
+
+import click
 
 # Добавляем путь к модулям
 sys.path.append(str(Path(__file__).parent.parent))
 
+from configs.processors_config import ALL_PROCESSORS
 from core.pipeline import DocumentPipeline
 from processors import *
-from utils import get_logger, setup_logging, FileManager
-from configs.processors_config import ALL_PROCESSORS
+from utils import FileManager, get_logger, setup_logging
 
 
 def _is_unstructured_available() -> bool:

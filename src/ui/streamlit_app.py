@@ -32,10 +32,8 @@ try:
     
     from configs.processors_config import ALL_PROCESSORS, QUALITY_METRICS
     from src.core.pipeline import DocumentPipeline
-    from src.processors.docx_processors import (
-        Docx2txtExtractor,
-        LibreOfficeExtractor,
-    )
+    from src.processors.docx_processors import (Docx2txtExtractor,
+                                                LibreOfficeExtractor)
     from src.processors.markdown_converters import CustomMarkdownFormatter
     from src.processors.pdf_processors import (PDFPlumberExtractor,
                                                PyMuPDFExtractor,
