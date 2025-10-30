@@ -5,9 +5,10 @@
 для различных типов документов.
 """
 
-from typing import Dict, List, Any
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List
+
 
 @dataclass
 class ProcessorConfig:
@@ -106,20 +107,10 @@ DOCX_PROCESSORS = {
             "supported_types": [".docx", ".doc"],
         }
     ),
-    "python_docx": ProcessorConfig(
-        name="Python-docx",
-        enabled=True,
-        priority=1,
-        parameters={
-            "extract_tables": True,
-            "extract_images": False,
-            "preserve_formatting": True
-        }
-    ),
     "docx2txt": ProcessorConfig(
         name="Docx2txt",
         enabled=True,
-        priority=2,
+        priority=1,
         parameters={}
     )
 }

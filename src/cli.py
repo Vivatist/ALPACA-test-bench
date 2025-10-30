@@ -30,7 +30,6 @@ def _register_components(pipeline: DocumentPipeline, file_ext: str) -> List[str]
         pipeline.register_extractor(['.pdf'], PDFPlumberExtractor())
         pipeline.register_extractor(['.pdf'], PyMuPDFExtractor())
     elif file_ext == '.docx':
-        pipeline.register_extractor(['.docx'], PythonDocxExtractor())
         pipeline.register_extractor(['.docx'], Docx2txtExtractor())
     elif file_ext == '.doc':
         pipeline.register_extractor(['.doc'], LibreOfficeExtractor())
@@ -299,7 +298,7 @@ def batch(
         pipeline.register_extractor(['.pdf'], PDFPlumberExtractor())
         
         # Word
-        pipeline.register_extractor(['.docx'], PythonDocxExtractor())
+        pipeline.register_extractor(['.docx'], Docx2txtExtractor())
         
         # Очистители
         pipeline.register_cleaner(BasicTextCleaner())

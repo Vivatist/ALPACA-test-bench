@@ -12,7 +12,6 @@ from .pdf_processors import (
 )
 
 from .docx_processors import (
-    PythonDocxExtractor,
     Docx2txtExtractor,
     LibreOfficeExtractor
 )
@@ -45,7 +44,6 @@ __all__ = [
     'CamelotExtractor',
     
     # Word процессоры
-    'PythonDocxExtractor',
     'Docx2txtExtractor',
     'LibreOfficeExtractor',
     

@@ -3,8 +3,8 @@
 """
 
 import re
-from typing import Dict, Any, List
 from pathlib import Path
+from typing import Any, Dict, List
 
 from ..core.base import BaseConverter
 from ..utils.logger import get_logger, log_processing_stage
@@ -23,7 +23,7 @@ class MarkdownifyConverter(BaseConverter):
         """Конвертирует HTML в Markdown."""
         try:
             from markdownify import markdownify
-            
+
             # Настройки конвертации
             heading_style = self.config.get("heading_style", "ATX")
             bullets = self.config.get("bullets", "-")
@@ -222,10 +222,10 @@ class PandocConverter(BaseConverter):
     def convert_to_markdown(self, text: str, **kwargs) -> str:
         """Конвертирует текст в Markdown через Pandoc."""
         try:
+            import shutil
             import subprocess
             import tempfile
-            import shutil
-            
+
             # Проверяем наличие pandoc
             if not shutil.which('pandoc'):
                 raise EnvironmentError("Pandoc not found in PATH")

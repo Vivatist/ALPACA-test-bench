@@ -3,11 +3,11 @@
 """
 
 import json
-from pathlib import Path
-from typing import Dict, Any, List
-from datetime import datetime
-import shutil
 import os
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
 
 from ..core.base import ProcessingResult, QualityScore
 from .logger import get_logger
@@ -53,7 +53,8 @@ class FileManager:
         output_dir: Path
     ):
         """Сохраняет результаты извлечения текста."""
-        extraction_dir = output_dir / "extraction"
+        extraction_dir = output_dir
+        extraction_dir.mkdir(parents=True, exist_ok=True)
         
         for processor_name, result in results.items():
             if result.status.value == "completed":
@@ -83,7 +84,8 @@ class FileManager:
         output_dir: Path
     ):
         """Сохраняет результаты очистки текста."""
-        cleaning_dir = output_dir / "cleaning"
+        cleaning_dir = output_dir
+        cleaning_dir.mkdir(parents=True, exist_ok=True)
         
         for extractor_name, cleaner_results in results.items():
             extractor_dir = cleaning_dir / extractor_name
@@ -118,7 +120,8 @@ class FileManager:
         output_dir: Path
     ):
         """Сохраняет результаты конвертации в Markdown."""
-        markdown_dir = output_dir / "markdown"
+        markdown_dir = output_dir
+        markdown_dir.mkdir(parents=True, exist_ok=True)
         
         for extractor_name, cleaner_results in results.items():
             for cleaner_name, converter_results in cleaner_results.items():

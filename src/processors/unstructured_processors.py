@@ -8,12 +8,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from ..core.base import (
-    BaseCleaner,
-    BaseExtractor,
-    ProcessingResult,
-    ProcessingStatus,
-)
+from ..core.base import (BaseCleaner, BaseExtractor, ProcessingResult,
+                         ProcessingStatus)
 from ..utils.logger import get_logger, log_processing_stage
 
 logger = get_logger(__name__)
@@ -103,16 +99,41 @@ class UnstructuredPartitionExtractor(BaseExtractor):
                 partition_pdf = self._load_callable(module, "partition_pdf")
                 elements = partition_pdf(filename=str(file_path), **partition_kwargs)
             elif file_type in (".doc", ".docx"):
+                elements = None
+                doc_exception: Optional[Exception] = None
+
                 try:
                     module = "unstructured.partition.doc"
                     partition_doc = self._load_callable(module, "partition_doc")
                     elements = partition_doc(filename=str(file_path), **partition_kwargs)
                 except ModuleNotFoundError:
-                    partition_docx = self._load_callable(
-                        "unstructured.partition.docx",
-                        "partition_docx",
+                    pass
+                except Exception as exc:  # pylint: disable=broad-except
+                    doc_exception = exc
+                    logger.warning(
+                        "partition_doc failed for %s, falling back to partition_docx: %s",
+                        file_path.name,
+                        exc,
                     )
-                    elements = partition_docx(filename=str(file_path), **partition_kwargs)
+
+                if elements is None:
+                    try:
+                        partition_docx = self._load_callable(
+                            "unstructured.partition.docx",
+                            "partition_docx",
+                        )
+                        elements = partition_docx(
+                            filename=str(file_path),
+                            **partition_kwargs,
+                        )
+                    except ModuleNotFoundError as exc:
+                        raise exc if doc_exception is None else doc_exception
+                    except Exception as exc:  # pylint: disable=broad-except
+                        if doc_exception is not None:
+                            raise doc_exception
+                        raise exc
+                if elements is None and doc_exception is not None:
+                    raise doc_exception
             elif file_type in (".ppt", ".pptx"):
                 try:
                     module = "unstructured.partition.ppt"
@@ -429,7 +450,8 @@ class UnstructuredLLMCleaner(BaseCleaner):
                 table_md = element.get("metadata", {}).get("text_as_html")
                 if table_md:
                     try:
-                        from markdownify import markdownify as html_to_md  # type: ignore
+                        from markdownify import \
+                            markdownify as html_to_md  # type: ignore
 
                         lines.append(html_to_md(table_md, heading_style="ATX"))
                         continue

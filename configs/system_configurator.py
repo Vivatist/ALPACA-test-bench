@@ -2,10 +2,10 @@
 Конфигуратор системы ALPACA Test Bench.
 """
 
-from pathlib import Path
-from typing import Dict, Any, List
 import json
 import sys
+from pathlib import Path
+from typing import Any, Dict, List
 
 CURRENT_DIR = Path(__file__).resolve().parent
 SRC_ROOT = CURRENT_DIR.parent / "src"
@@ -14,7 +14,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from utils import setup_logging
 
-from .processors_config import ALL_PROCESSORS, QUALITY_METRICS, PATHS
+from .processors_config import ALL_PROCESSORS, PATHS, QUALITY_METRICS
 
 
 class SystemConfigurator:
@@ -55,7 +55,7 @@ class SystemConfigurator:
             },
             "processors": {
                 "pdf_default": "PDFPlumber",
-                "docx_default": "Python-docx",
+                "docx_default": "Unstructured Partition (DOC/DOCX)",
                 "cleaner_default": ["Basic Cleaner", "Advanced Cleaner"],
                 "markdown_default": "Custom Markdown Formatter"
             },
@@ -93,7 +93,10 @@ class SystemConfigurator:
         if file_type.lower() == 'pdf':
             processors = ["PDFPlumber", "PyMuPDF", "PyPDF"]
         elif file_type.lower() in ['docx', 'doc']:
-            processors = ["Python-docx", "Docx2txt"]
+            processors = [
+                "Unstructured Partition (DOC/DOCX)",
+                "Docx2txt"
+            ]
         elif file_type.lower() in ['pptx', 'ppt']:
             processors = ["Python-pptx"]
         elif file_type.lower() in ['xlsx', 'xls']:
@@ -169,7 +172,7 @@ class SystemConfigurator:
                 'converter': 'Custom Markdown Formatter'
             },
             'docx': {
-                'extractor': 'Python-docx',
+                'extractor': 'Unstructured Partition (DOC/DOCX)',
                 'cleaner': 'Basic Cleaner',
                 'converter': 'Custom Markdown Formatter'
             },

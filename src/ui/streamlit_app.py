@@ -2,15 +2,16 @@
 Streamlit веб-интерфейс для ALPACA Test Bench.
 """
 
-import streamlit as st
+import importlib.util
+import json
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from pathlib import Path
-import json
-import time
-from typing import Dict, Any, List, Optional
-import importlib.util
+import streamlit as st
 
 # Настройка страницы
 st.set_page_config(
@@ -24,31 +25,30 @@ st.set_page_config(
 try:
     import sys
     from pathlib import Path
-    
+
     # Добавляем корневую директорию проекта в sys.path
     project_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(project_root))
     
+    from configs.processors_config import ALL_PROCESSORS, QUALITY_METRICS
     from src.core.pipeline import DocumentPipeline
-    from src.processors.pdf_processors import (
-        PyPDFExtractor, PDFPlumberExtractor, PyMuPDFExtractor
-    )
     from src.processors.docx_processors import (
-        PythonDocxExtractor, Docx2txtExtractor, LibreOfficeExtractor
-    )
-    from src.processors.text_cleaners import (
-        BasicTextCleaner, AdvancedTextCleaner, HTMLCleaner
+        Docx2txtExtractor,
+        LibreOfficeExtractor,
     )
     from src.processors.markdown_converters import CustomMarkdownFormatter
-    from src.utils.logger import get_logger, setup_logging
+    from src.processors.pdf_processors import (PDFPlumberExtractor,
+                                               PyMuPDFExtractor,
+                                               PyPDFExtractor)
+    from src.processors.text_cleaners import (AdvancedTextCleaner,
+                                              BasicTextCleaner, HTMLCleaner)
     from src.utils.file_manager import FileManager
-    from configs.processors_config import ALL_PROCESSORS, QUALITY_METRICS
-    
+    from src.utils.logger import get_logger, setup_logging
+
     # Опциональные импорты
     try:
         from src.processors.unstructured_processors import (
-            UnstructuredPartitionExtractor, UnstructuredLLMCleaner
-        )
+            UnstructuredLLMCleaner, UnstructuredPartitionExtractor)
         UNSTRUCTURED_AVAILABLE = True
     except ImportError:
         UNSTRUCTURED_AVAILABLE = False
@@ -82,10 +82,9 @@ class StreamlitApp:
         
         # Регистрируем Word процессоры
         try:
-            self.pipeline.register_extractor(['.docx'], PythonDocxExtractor())
             self.pipeline.register_extractor(['.docx'], Docx2txtExtractor())
         except Exception as e:
-            st.warning(f"Некоторые Word процессоры недоступны: {e}")
+            st.warning(f"Docx2txt недоступен: {e}")
 
         # Unstructured интеграция
         if self.unstructured_available:
