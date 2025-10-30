@@ -6,7 +6,7 @@
 """
 
 from typing import Dict, List, Any
-from dataclasses import datac   lass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 @dataclass

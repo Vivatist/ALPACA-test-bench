@@ -5,6 +5,14 @@
 from pathlib import Path
 from typing import Dict, Any, List
 import json
+import sys
+
+CURRENT_DIR = Path(__file__).resolve().parent
+SRC_ROOT = CURRENT_DIR.parent / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from utils import setup_logging
 
 from .processors_config import ALL_PROCESSORS, QUALITY_METRICS, PATHS
 
@@ -267,7 +275,6 @@ def setup_system(config_file: Path = None) -> SystemConfigurator:
         configurator.reset_to_defaults()
     
     # Применяем настройки логирования
-    from ..utils import setup_logging
     log_config = configurator.get_logging_settings()
     setup_logging(
         log_level=log_config["level"],

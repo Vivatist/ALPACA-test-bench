@@ -3,7 +3,7 @@
 """
 
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pathlib import Path
 
 from ..core.base import BaseConverter

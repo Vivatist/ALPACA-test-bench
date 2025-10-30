@@ -1,4 +1,5 @@
 # Файлы окружения
+.venv/
 .env
 .env.local
 .env.development

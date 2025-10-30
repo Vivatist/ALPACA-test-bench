@@ -23,12 +23,35 @@ st.set_page_config(
 # Импорты основных компонентов
 try:
     import sys
-    sys.path.append(str(Path(__file__).parent.parent))
+    from pathlib import Path
     
-    from core.pipeline import DocumentPipeline
-    from processors import *
-    from utils import get_logger, setup_logging, FileManager
+    # Добавляем корневую директорию проекта в sys.path
+    project_root = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    
+    from src.core.pipeline import DocumentPipeline
+    from src.processors.pdf_processors import (
+        PyPDFExtractor, PDFPlumberExtractor, PyMuPDFExtractor
+    )
+    from src.processors.docx_processors import (
+        PythonDocxExtractor, Docx2txtExtractor, LibreOfficeExtractor
+    )
+    from src.processors.text_cleaners import (
+        BasicTextCleaner, AdvancedTextCleaner, HTMLCleaner
+    )
+    from src.processors.markdown_converters import CustomMarkdownFormatter
+    from src.utils.logger import get_logger, setup_logging
+    from src.utils.file_manager import FileManager
     from configs.processors_config import ALL_PROCESSORS, QUALITY_METRICS
+    
+    # Опциональные импорты
+    try:
+        from src.processors.unstructured_processors import (
+            UnstructuredPartitionExtractor, UnstructuredLLMCleaner
+        )
+        UNSTRUCTURED_AVAILABLE = True
+    except ImportError:
+        UNSTRUCTURED_AVAILABLE = False
     
     setup_logging("INFO")
     logger = get_logger(__name__)
@@ -44,7 +67,7 @@ class StreamlitApp:
     def __init__(self):
         self.pipeline = DocumentPipeline()
         self.file_manager = FileManager()
-        self.unstructured_available = self._is_unstructured_available()
+        self.unstructured_available = UNSTRUCTURED_AVAILABLE
         self.setup_pipeline()
         
     def setup_pipeline(self):
@@ -105,19 +128,7 @@ class StreamlitApp:
         
         # Регистрируем конвертеры
         self.pipeline.register_converter("custom", CustomMarkdownFormatter())
-        try:
-            self.pipeline.register_converter("markdownify", MarkdownifyConverter())
-        except:
-            pass
-        try:
-            self.pipeline.register_converter("html2text", Html2TextConverter())
-        except:
-            pass
 
-    @staticmethod
-    def _is_unstructured_available() -> bool:
-        return importlib.util.find_spec("unstructured") is not None
-    
     def run(self):
         """Запуск приложения."""
         if not self.unstructured_available:
