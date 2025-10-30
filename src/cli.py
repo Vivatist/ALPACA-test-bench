@@ -43,18 +43,20 @@ def _register_components(pipeline: DocumentPipeline, file_ext: str) -> List[str]
             for extractors in pipeline.extractors.values()
         )
         if not already_registered:
-        unstructured_types = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.md', '.html']
-        unstructured_params = {
-            "supported_types": unstructured_types,
-            "strategy": "hi_res",
-            "chunking_strategy": "by_title",
-            "include_metadata": True,
-            "infer_table_structure": True,
-        }
-        pipeline.register_extractor(
-            unstructured_types,
-            UnstructuredPartitionExtractor(unstructured_params)
-        )
+            unstructured_types = [
+                '.pdf', '.docx', '.doc', '.pptx', '.ppt', '.md', '.html'
+            ]
+            unstructured_params = {
+                "supported_types": unstructured_types,
+                "strategy": "hi_res",
+                "chunking_strategy": "by_title",
+                "include_metadata": True,
+                "infer_table_structure": True,
+            }
+            pipeline.register_extractor(
+                unstructured_types,
+                UnstructuredPartitionExtractor(unstructured_params)
+            )
 
     existing_cleaners = {cleaner.name for cleaner in pipeline.cleaners}
 
@@ -86,7 +88,7 @@ def _register_components(pipeline: DocumentPipeline, file_ext: str) -> List[str]
 def cli(log_level: str, log_dir: str):
     """ALPACA Test Bench - CLI интерфейс для тестирования процессоров документов."""
     setup_logging(log_level, log_dir)
-    
+
 
 @cli.command()
 @click.argument('file_path', type=click.Path(exists=True))
@@ -94,9 +96,13 @@ def cli(log_level: str, log_dir: str):
 @click.option('--cleaner', '-c', multiple=True, help='Очистители текста')
 @click.option('--converter', '-conv', help='Конвертер в Markdown')
 @click.option('--output-dir', '-o', default='outputs', help='Директория для результатов')
-@click.option('--save-intermediate', is_flag=True, help='Сохранять промежуточные результаты')
+@click.option(
+    '--save-intermediate',
+    is_flag=True,
+    help='Сохранять промежуточные результаты'
+)
 def process(
-    file_path: str, 
+    file_path: str,
     processor: List[str],
     cleaner: List[str],
     converter: Optional[str],
@@ -146,7 +152,10 @@ def process(
             for cleaner_name in quality_scores[extractor]:
                 for conv_name in quality_scores[extractor][cleaner_name]:
                     score = quality_scores[extractor][cleaner_name][conv_name]
-                    if hasattr(score, 'overall_score') and score.overall_score > best_score:
+                    if (
+                        hasattr(score, 'overall_score')
+                        and score.overall_score > best_score
+                    ):
                         best_score = score.overall_score
                         best_combo = f"{extractor}→{cleaner_name}→{conv_name}"
         
@@ -169,7 +178,7 @@ def process(
 @click.option('--output-file', '-o', help='Файл для сохранения результатов')
 def compare(
     file_path: str,
-    processors: List[str], 
+    processors: List[str],
     output_format: str,
     output_file: Optional[str]
 ):
