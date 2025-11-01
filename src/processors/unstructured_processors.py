@@ -478,7 +478,8 @@ class UnstructuredLLMCleaner(BaseCleaner):
         llm_used = False
         llm_chunks_processed = 0
         
-        use_llm = self.config.get("use_llm_cleaning")
+        # Проверяем use_llm_cleaning из config ИЛИ kwargs
+        use_llm = self.config.get("use_llm_cleaning") or kwargs.get("use_llm_cleaning", False)
         logger.info(f"UnstructuredLLMCleaner: use_llm_cleaning={use_llm}, llm_callable={llm is not None}, elements={len(elements)}")
 
         for element in elements:
@@ -490,7 +491,7 @@ class UnstructuredLLMCleaner(BaseCleaner):
             for func in cleaner_functions:
                 cleaned_text = func(cleaned_text)
 
-            if self.config.get("use_llm_cleaning") and llm:
+            if use_llm and llm:
                 logger.info(f"Отправка элемента типа {element_type} в LLM (длина {len(cleaned_text)})")
                 llm_response = self._call_llm(
                     llm,

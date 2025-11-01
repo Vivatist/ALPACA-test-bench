@@ -558,42 +558,156 @@ class StreamlitApp:
             status_text.text(f"Обработка с помощью {processor}...")
             progress_bar.progress((i + 1) / len(processors))
             
-            try:
-                # Готовим LLM метаданные
-                llm_metadata = {}
-                if llm_required and llm_callable is not None:
-                    llm_state = self._ensure_llm_state()
-                    llm_metadata = {
-                        "llm_enabled": True,
-                        "llm_model": llm_state.get("model", "unknown"),
-                        "llm_provider": llm_state.get("provider", "openai"),
-                        "llm_temperature": llm_state.get("temperature", 0.0),
-                        "llm_chunk_size": llm_state.get("chunk_size", 2048),
-                    }
-                else:
-                    llm_metadata = {"llm_enabled": False}
-                
-                # Обработка файла
-                result = self.pipeline.process_document(
-                    file_path=file_path,
-                    extractor_name=processor,
-                    cleaner_names=cleaners,
-                    converter_name=converters[0] if converters else None,
-                    llm_callable=llm_callable,
-                    llm_metadata=llm_metadata,
-                )
-                
-                results[processor] = result
-                
-            except Exception as e:
-                st.error(f"Ошибка при обработке с {processor}: {e}")
-                logger.error(f"Processing failed with {processor}: {e}")
+            # Показываем статус LLM для текущего процессора
+            if llm_required and llm_callable is not None and "Unstructured LLM Cleaner" in cleaners:
+                with st.spinner(f"🤖 Применение LLM очистки к результатам {processor}..."):
+                    try:
+                        # Готовим LLM метаданные
+                        llm_metadata = {}
+                        if llm_required and llm_callable is not None:
+                            llm_state = self._ensure_llm_state()
+                            llm_metadata = {
+                                "llm_enabled": True,
+                                "llm_model": llm_state.get("model", "unknown"),
+                                "llm_provider": llm_state.get("provider", "openai"),
+                                "llm_temperature": llm_state.get("temperature", 0.0),
+                                "llm_chunk_size": llm_state.get("chunk_size", 2048),
+                            }
+                        else:
+                            llm_metadata = {"llm_enabled": False}
+                        
+                        # Обработка файла
+                        result = self.pipeline.process_document(
+                            file_path=file_path,
+                            extractor_name=processor,
+                            cleaner_names=cleaners,
+                            converter_name=converters[0] if converters else None,
+                            llm_callable=llm_callable,
+                            llm_metadata=llm_metadata,
+                            use_llm_cleaning=bool(llm_callable is not None),
+                        )
+                        
+                        results[processor] = result
+                        
+                    except Exception as e:
+                        st.error(f"Ошибка при обработке с {processor}: {e}")
+                        logger.error(f"Processing failed with {processor}: {e}")
+            else:
+                try:
+                    # Готовим LLM метаданные
+                    llm_metadata = {}
+                    if llm_required and llm_callable is not None:
+                        llm_state = self._ensure_llm_state()
+                        llm_metadata = {
+                            "llm_enabled": True,
+                            "llm_model": llm_state.get("model", "unknown"),
+                            "llm_provider": llm_state.get("provider", "openai"),
+                            "llm_temperature": llm_state.get("temperature", 0.0),
+                            "llm_chunk_size": llm_state.get("chunk_size", 2048),
+                        }
+                    else:
+                        llm_metadata = {"llm_enabled": False}
+                    
+                    # Обработка файла
+                    result = self.pipeline.process_document(
+                        file_path=file_path,
+                        extractor_name=processor,
+                        cleaner_names=cleaners,
+                        converter_name=converters[0] if converters else None,
+                        llm_callable=llm_callable,
+                        llm_metadata=llm_metadata,
+                        use_llm_cleaning=bool(llm_callable is not None),
+                    )
+                    
+                    results[processor] = result
+                    
+                except Exception as e:
+                    st.error(f"Ошибка при обработке с {processor}: {e}")
+                    logger.error(f"Processing failed with {processor}: {e}")
         
         status_text.text("Обработка завершена!")
         progress_bar.progress(100)
         
+        # Показываем информацию об использовании LLM
+        if llm_required and llm_callable is not None:
+            self._display_llm_usage_summary(results)
+        
         if results:
             self._display_results(results, file_path.name)
+    
+    def _display_llm_usage_summary(self, results: Dict[str, Any]):
+        """Отображает сводку об использовании LLM."""
+        st.subheader("📊 Сводка по LLM обработке")
+        
+        total_chunks = 0
+        llm_used_count = 0
+        all_cleaners = []  # Для отладки
+        
+        # Собираем статистику из результатов
+        for processor_name, result in results.items():
+            cleaning_results = result.get("cleaning_results", {})
+            for extractor_name, cleaner_dict in cleaning_results.items():
+                for cleaner_name, cleaning_result in cleaner_dict.items():
+                    all_cleaners.append(cleaner_name)  # Для отладки
+                    
+                    # Проверяем по разным вариантам имени
+                    if any(keyword in cleaner_name for keyword in ["Unstructured LLM", "UnstructuredLLM", "LLM Cleaner"]):
+                        metadata = cleaning_result.metadata or {}
+                        chunks = metadata.get("llm_chunks_processed", 0)
+                        llm_applied = metadata.get("llm_cleaning_applied", False)
+                        llm_enabled = metadata.get("llm_enabled", False)
+                        
+                        # Отладочная информация
+                        logger.info(f"LLM Cleaner найден: {cleaner_name}, chunks={chunks}, applied={llm_applied}, enabled={llm_enabled}")
+                        
+                        if chunks > 0:
+                            total_chunks += chunks
+                        if llm_applied:
+                            llm_used_count += 1
+        
+        # Отладка: показываем все найденные cleaners
+        with st.expander("🔍 Отладка: найденные cleaners"):
+            st.write("Все найденные очистители:", all_cleaners)
+        
+        if total_chunks > 0:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Обработано чанков через LLM", total_chunks)
+            with col2:
+                st.metric("Файлов обработано с LLM", llm_used_count)
+            with col3:
+                llm_state = self._ensure_llm_state()
+                st.metric("Модель", llm_state.get("model", "unknown"))
+            
+            st.success("✅ LLM очистка успешно применена!")
+        else:
+            # Показываем почему LLM не был применён
+            st.info("ℹ️ LLM очистка не была применена")
+            
+            # Диагностическая информация
+            with st.expander("🔍 Диагностика: почему LLM не применён?"):
+                for processor_name, result in results.items():
+                    st.write(f"**Процессор: {processor_name}**")
+                    cleaning_results = result.get("cleaning_results", {})
+                    
+                    if not cleaning_results:
+                        st.warning("⚠️ Нет результатов очистки")
+                        continue
+                    
+                    for extractor_name, cleaner_dict in cleaning_results.items():
+                        st.write(f"Экстрактор: {extractor_name}")
+                        for cleaner_name, cleaning_result in cleaner_dict.items():
+                            if any(keyword in cleaner_name for keyword in ["Unstructured LLM", "UnstructuredLLM", "LLM Cleaner"]):
+                                st.write(f"- Очиститель: {cleaner_name}")
+                                metadata = cleaning_result.metadata or {}
+                                
+                                st.json({
+                                    "llm_enabled": metadata.get("llm_enabled", "Не указано"),
+                                    "llm_cleaning_applied": metadata.get("llm_cleaning_applied", "Не указано"),
+                                    "llm_chunks_processed": metadata.get("llm_chunks_processed", 0),
+                                    "llm_model": metadata.get("llm_model", "Не указано"),
+                                    "Все ключи метаданных": list(metadata.keys())
+                                })
     
     def _display_results(self, results: Dict[str, Any], filename: str):
         """Отображает результаты обработки."""
@@ -743,7 +857,67 @@ class StreamlitApp:
         """Отображает детальные метрики."""
         st.subheader("Детальный анализ метрик")
         
+        # Показываем информацию о LLM обработке
+        st.markdown("### 🤖 LLM Обработка")
+        llm_info_found = False
+        
+        for processor_name, result in results.items():
+            cleaning_results = result.get("cleaning_results", {})
+            for extractor_name, cleaner_dict in cleaning_results.items():
+                for cleaner_name, cleaning_result in cleaner_dict.items():
+                    if "Unstructured LLM Cleaner" in cleaner_name:
+                        metadata = cleaning_result.metadata or {}
+                        
+                        llm_enabled = metadata.get("llm_enabled", False)
+                        llm_applied = metadata.get("llm_cleaning_applied", False)
+                        chunks_processed = metadata.get("llm_chunks_processed", 0)
+                        
+                        if llm_enabled or llm_applied:
+                            llm_info_found = True
+                            with st.expander(f"📋 {processor_name} → {extractor_name} → {cleaner_name}", expanded=True):
+                                col1, col2, col3 = st.columns(3)
+                                
+                                with col1:
+                                    if llm_applied:
+                                        st.success("✅ LLM применён")
+                                    else:
+                                        st.warning("⚠️ LLM не применён")
+                                
+                                with col2:
+                                    st.metric("Обработано чанков", chunks_processed)
+                                
+                                with col3:
+                                    if llm_enabled:
+                                        model = metadata.get("llm_model", "unknown")
+                                        st.info(f"Модель: {model}")
+                                
+                                # Дополнительная информация
+                                if llm_enabled:
+                                    st.markdown("**Параметры LLM:**")
+                                    llm_params = {
+                                        "Провайдер": metadata.get("llm_provider", "N/A"),
+                                        "Модель": metadata.get("llm_model", "N/A"),
+                                        "Temperature": metadata.get("llm_temperature", "N/A"),
+                                        "Размер чанка": metadata.get("llm_chunk_size", "N/A"),
+                                    }
+                                    st.json(llm_params)
+                                
+                                # Показываем примеры очищенных элементов
+                                cleaned_elements = metadata.get("cleaned_elements", [])
+                                if cleaned_elements and chunks_processed > 0:
+                                    st.markdown("**Примеры обработанных элементов:**")
+                                    for idx, elem in enumerate(cleaned_elements[:3]):  # Первые 3
+                                        text = elem.get("text", "")[:200]
+                                        elem_type = elem.get("type", "Unknown")
+                                        st.text(f"[{elem_type}] {text}...")
+        
+        if not llm_info_found:
+            st.info("ℹ️ LLM очистка не использовалась в этой обработке")
+        
+        st.markdown("---")
+        
         # Собираем все метрики для анализа
+        st.markdown("### 📊 Общие метрики качества")
         all_metrics = []
         
         for processor_name, result in results.items():

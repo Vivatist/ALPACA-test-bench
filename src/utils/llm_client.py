@@ -47,7 +47,14 @@ def _build_openai_callable(config: LLMConfig) -> Callable[[str], str]:
             "requests is required for OpenAI LLM integration. Install via pip install requests"
         ) from exc
 
-    url = (config.base_url or "https://api.openai.com/v1/chat/completions").strip()
+    # Обработка base_url: добавляем /chat/completions если отсутствует
+    base_url = (config.base_url or "https://api.openai.com/v1").strip()
+    if base_url.endswith("/v1") or base_url.endswith("/v1/"):
+        base_url = base_url.rstrip("/") + "/chat/completions"
+    elif not base_url.endswith("/chat/completions"):
+        base_url = base_url.rstrip("/") + "/chat/completions"
+    
+    url = base_url
     headers = {
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
