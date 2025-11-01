@@ -587,3 +587,30 @@ class CustomMarkdownFormatter(BaseConverter):
         text = re.sub(r'\n\s*(\d+\.)\s*([^\n]+)', r'\n\1 \2', text)
         
         return text.strip()
+
+
+class PassThroughConverter(BaseConverter):
+    """
+    Pass-through конвертер для текстов, которые уже в формате Markdown.
+    Используется для экстракторов типа MarkItDown, которые сами выдают Markdown.
+    Просто возвращает текст без изменений.
+    """
+    
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__("PassThrough", config)
+    
+    @log_processing_stage("PassThrough Conversion")
+    def convert_to_markdown(self, text: str, **kwargs) -> str:
+        """Возвращает текст без изменений (уже Markdown)."""
+        logger.debug(f"PassThrough: text already in Markdown format ({len(text)} chars)")
+        return text
+    
+    def get_metadata(self, text: str, **kwargs) -> Dict[str, Any]:
+        """Возвращает метаданные о конвертации."""
+        return {
+            "converter": "PassThrough",
+            "conversion_type": "none",
+            "input_length": len(text),
+            "output_length": len(text),
+            "note": "Text already in Markdown format, no conversion needed"
+        }

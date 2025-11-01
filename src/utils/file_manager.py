@@ -41,11 +41,14 @@ class FileManager:
                 continue
 
             parser_dir = self._ensure_parser_dir(experiment_dir, processor_name)
+            
+            # Extraction не использует LLM, всегда OFF
             filename = self._format_filename(
                 stage_number=1,
                 stage_name="extraction",
                 libraries=[processor_name],
                 extension="txt",
+                llm_enabled=False,
             )
             file_path = parser_dir / filename
             header = self._build_processing_header(
@@ -75,11 +78,15 @@ class FileManager:
                 if result.status.value != "completed":
                     continue
 
+                # Проверяем LLM статус из метаданных
+                llm_enabled = result.metadata.get("llm_enabled", False) if result.metadata else False
+
                 filename = self._format_filename(
                     stage_number=2,
                     stage_name="cleaning",
                     libraries=[extractor_name, cleaner_name],
                     extension="txt",
+                    llm_enabled=llm_enabled,
                 )
                 file_path = parser_dir / filename
 
@@ -120,11 +127,15 @@ class FileManager:
                     if result.status.value != "completed":
                         continue
 
+                    # Проверяем LLM статус из метаданных
+                    llm_enabled = result.metadata.get("llm_enabled", False) if result.metadata else False
+
                     filename = self._format_filename(
                         stage_number=3,
                         stage_name="conversion",
                         libraries=[extractor_name, cleaner_name, converter_name],
                         extension="md",
+                        llm_enabled=llm_enabled,
                     )
                     file_path = parser_dir / filename
 
@@ -176,15 +187,19 @@ class FileManager:
         stage_name: str,
         libraries: List[str],
         extension: str,
+        llm_enabled: bool = False,
     ) -> str:
         stage_component = self._sanitize_component(stage_name)
         library_components = [self._sanitize_component(lib) for lib in libraries if lib]
         libs_part = "__".join(filter(None, library_components))
 
+        # Добавляем LLM суффикс
+        llm_suffix = "_LLM-ON" if llm_enabled else "_LLM-OFF"
+
         if libs_part:
-            base_name = f"{stage_number}_{stage_component}_{libs_part}"
+            base_name = f"{stage_number}_{stage_component}_{libs_part}{llm_suffix}"
         else:
-            base_name = f"{stage_number}_{stage_component}"
+            base_name = f"{stage_number}_{stage_component}{llm_suffix}"
 
         return f"{base_name}.{extension.lstrip('.')}"
 

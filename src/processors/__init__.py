@@ -2,10 +2,12 @@
 Инициализация модуля процессоров документов.
 """
 
-from .docx_processors import (Docx2txtExtractor, DocExtractor,
+from .docx_processors import (DocExtractor, Docx2txtExtractor,
                               Win32WordExtractor)
 from .markdown_converters import (CustomMarkdownFormatter, Html2TextConverter,
-                                  MarkdownifyConverter, PandocConverter)
+                                  MarkdownifyConverter, PandocConverter,
+                                  PassThroughConverter)
+from .markitdown_processors import MarkItDownExtractor
 # Экспортируем основные классы процессоров
 from .pdf_processors import (CamelotExtractor, PDFMinerExtractor,
                              PDFPlumberExtractor, PyMuPDFExtractor,
@@ -28,6 +30,9 @@ __all__ = [
     'DocExtractor',
     'Win32WordExtractor',
     
+    # MarkItDown процессор
+    'MarkItDownExtractor',
+    
     # Очистители текста
     'BasicTextCleaner',
     'AdvancedTextCleaner',
@@ -39,6 +44,7 @@ __all__ = [
     'MarkdownifyConverter',
     'Html2TextConverter',
     'PandocConverter',
+    'PassThroughConverter',
     'CustomMarkdownFormatter',
     'UnstructuredPartitionExtractor'
 ]

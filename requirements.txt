@@ -36,6 +36,7 @@ beautifulsoup4>=4.12.3
 lxml>=4.9.0
 html2text>=2020.1.16
 markdownify>=0.11.6
+markitdown>=0.0.1a1
 nltk>=3.8.0
 spacy>=3.7.0
 

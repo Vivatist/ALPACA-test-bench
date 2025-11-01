@@ -3,13 +3,24 @@
 Основной startup скрипт для ALPACA Test Bench.
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 # Добавляем src в путь
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root / "src"))
+
+# Загружаем переменные окружения из .env
+try:
+    from dotenv import load_dotenv
+    env_path = project_root / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Загружены переменные из {env_path}")
+except ImportError:
+    print("⚠️  python-dotenv не установлен, файл .env не будет загружен")
+    print("   Установите: pip install python-dotenv")
 
 def main():
     """Главная функция запуска."""
@@ -83,7 +94,7 @@ def run_cli(cli_args: list):
     
     try:
         from src.cli import cli
-        
+
         # Передаем аргументы в CLI
         sys.argv = ['alpaca-cli'] + cli_args
         cli()

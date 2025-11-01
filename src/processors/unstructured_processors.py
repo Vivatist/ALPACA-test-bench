@@ -476,6 +476,7 @@ class UnstructuredLLMCleaner(BaseCleaner):
         applied_functions = [func.__name__ for func in cleaner_functions]
         llm = llm_callable or self.llm_callable or kwargs.get("llm_callable")
         llm_used = False
+        llm_chunks_processed = 0
         
         use_llm = self.config.get("use_llm_cleaning")
         logger.info(f"UnstructuredLLMCleaner: use_llm_cleaning={use_llm}, llm_callable={llm is not None}, elements={len(elements)}")
@@ -501,6 +502,7 @@ class UnstructuredLLMCleaner(BaseCleaner):
                 if llm_response:
                     cleaned_text = llm_response.strip()
                     llm_used = True
+                    llm_chunks_processed += 1
                     logger.info(f"LLM вернул очищенный текст длиной {len(cleaned_text)}")
                 else:
                     logger.warning("LLM не вернул ответ")
@@ -513,11 +515,20 @@ class UnstructuredLLMCleaner(BaseCleaner):
             cleaned_elements.append(cleaned_element)
 
         markdown = self._elements_to_markdown(cleaned_elements)
+        
+        # Собираем метаданные включая LLM информацию
         extra_metadata = {
             "cleaned_elements": cleaned_elements,
             "applied_cleaners": applied_functions,
             "llm_cleaning_applied": llm_used,
+            "llm_chunks_processed": llm_chunks_processed,
         }
+        
+        # Добавляем переданные LLM метаданные из kwargs
+        llm_metadata = kwargs.get("llm_metadata", {})
+        if llm_metadata:
+            extra_metadata.update(llm_metadata)
+        
         return markdown, extra_metadata
 
     def _resolve_elements(
